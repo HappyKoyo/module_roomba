@@ -106,23 +106,9 @@ class Memory:
 class Actor:
     def get_action(self, state, episode, targetQN):   # [C]ｔ＋１での行動を返す
         # ε-greedy
-        epsilon = 0.001 + 1.0 / (1.0+episode)
-        #epsilon = 0.0001# + 0.9 / (2.0+episode)
-        #epsilon = 1 - 0.05*episode
-        #epsilon = 0.3
- 
-        if epsilon <= np.random.uniform(0, 1):
-            retTargetQs = targetQN.model.predict(state)[0]
-            advance = retTargetQs[0]
-            roll    = retTargetQs[1]
-            #print state,retTargetQs
-            #print retTargetQs
-            #print "net roll =",roll,"advance",advance
- 
-        else:
-            advance = (random.random()-0.5)
-            roll    = (random.random()-0.5)
-            #print "rnd roll =",roll,"advance",advance
+        retTargetQs = targetQN.model.predict(state)[0]
+        advance = retTargetQs[0]
+        roll    = retTargetQs[1]
 
         print "advance roll is ",advance,roll
         return advance,roll
@@ -257,9 +243,7 @@ class Module:
 
     def resetWorld(self):
         self.setObject(0,0,"create_2")
-        y = random.random()
-        self.setObject(0.57,(y-0.5)*0.6,"coke0")
-        y = random.random()
+        self.setObject(0.57,0.2,"coke0")
         self.setObject(1.27,0,"beer0")
 
     # main loop
@@ -269,38 +253,39 @@ class Module:
         mainQN = QNetwork(hidden1_size=HIDDEN_SIZE, learning_rate=LEARNING_RATE)     # main q-network
         targetQN = QNetwork(hidden1_size=HIDDEN_SIZE, learning_rate=LEARNING_RATE)   # target q-network
         # if you wanna load weights, you 
-        mainQN.model.load_weights('/home/demulab/catkin_ws/src/module/weights/module_weights29.h5')
+        mainQN.model.load_weights('/home/demulab/catkin_ws/src/module/weights/module_weights69.h5')
         memory = Memory(max_size=MEMORY_SIZE)
         actor = Actor()
-        self.resetWorld()
+        #self.resetWorld()
 
         # get first state
         tx,ta,td,gx,ga,gd = self.getObjStates()
         state = np.array([tx,ta,td,gx,ga,gd])
         state = np.reshape(state, [1, 6])
 
-        for episode in range(NUM_EPISODES):
+        for episode in range(1):
             self.is_game_finished = False
             episode_reward = 0
             targetQN.model.set_weights(mainQN.model.get_weights())
             if episode % 10 == 9:
                 targetQN.model.save_weights('/home/demulab/catkin_ws/src/module/weights/module_weights'+str(episode)+'.h5')
-            self.resetWorld()
-            for t in range(MAX_STEPS + 1):
-                r = rospy.Rate(5)
+            #self.resetWorld()
+            for t in range(20):
+                r = rospy.Rate(3)
                 r.sleep()
                 advance,roll= actor.get_action(state, episode, mainQN)   # select action 
                 #print advance
                 #next_state, reward, done, info = env.step(action)   # calculate s_{t+1},_R{t}
                 #self.moveRoomba(advance*0.6,roll)
                 #self.moveRoomba(advance,roll)
-                self.moveRoomba(advance,roll)
+                self.moveRoomba(advance*0.6,roll)
                 tx,ta,td,gx,ga,gd = self.getObjStates()
                 #print tx,ta,td,gx,ga,gd
                 #next_state = np.array([tx,ta,td,gx,ga,gd])
                 next_state = np.array([tx,ta,td,gx,ga,gd])
                 next_state = np.reshape(next_state, [1, 6])
-                reward = self.getReward(advance,roll)
+                #reward = self.getReward(advance,roll)
+                reward = 1
                 episode_reward += reward
                 memory.add((state, advance, roll, reward, next_state)) # save this experience to memory
                 if (memory.len() > BATCH_SIZE) and not islearned:
@@ -313,10 +298,11 @@ class Module:
                 # game finished
                 #if reward >= 7 or self.target["is_detected"] == False or self.garbage["is_detected"] == False:
                 print "is detected and game finished is ",self.target["is_detected"],self.is_game_finished
-                if self.target["is_detected"] == False or self.is_game_finished == True:
-                    break
+                #if self.target["is_detected"] == False or self.is_game_finished == True:
+                #    break
             print "episode_reward is",episode_reward
             #total_reward_vec = np.hstack((total_reward_vec[1:],episode_reward)
+            self.moveRoomba(0,0)
 
 if __name__ == '__main__':
     rospy.init_node('module')
