@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*
-
 # general
 import numpy as np
 import tensorflow as tf
@@ -15,6 +14,7 @@ from gazebo_msgs.msg import ModelStates
 from darknet_ros_msgs.msg import BoundingBoxes
 from std_srvs.srv import Empty
 from gazebo_msgs.srv import SetModelState
+
 # keras
 import keras
 from keras.models import Sequential
@@ -61,15 +61,13 @@ class QNetwork:
  
         for i, (state, advance, roll, reward, next_state) in enumerate(mini_batch):
             inputs[i:i + 1] = state
-            #print "state_b is ",state_b
-            #target = reward_b
-            
  
             if not (next_state == np.zeros(state.shape)).all(axis=1):
                 retmainQs = self.model.predict(next_state)[0]
                 # retmain[x] x-> 0:advance 1:role
                 next_advance = retmainQs[0]
                 next_roll    = retmainQs[1]
+                #target_advance = reward + gamma * targetQN.model.predict(next_state)[0][0]
                 target_advance = (reward * advance)*0.1+advance# + gamma * targetQN.model.predict(next_state)[0][0]
                 target_roll    = (reward * roll   )*0.1+roll   # + gamma * targetQN.model.predict(next_state)[0][1]
                 print "targets is",target_advance,target_roll
@@ -96,23 +94,16 @@ class Memory:
     def len(self):
         return len(self.buffer)
 
-    def reset(self):
+    def reset(self):#added
         self.buffer = deque(maxlen=MEMORY_SIZE)
 
 # select action
 class Actor:
-    def get_action(self, state, episode, targetQN):
+    def get_action(self, state, episode, targetQN):   # [C]ｔ＋１での行動を返す
         # ε-greedy
-        epsilon = 0.001 + 1.0 / (1.0+episode)
- 
-        if epsilon <= np.random.uniform(0, 1):
-            retTargetQs = targetQN.model.predict(state)[0]
-            advance = retTargetQs[0]
-            roll    = retTargetQs[1]
- 
-        else:
-            advance = (random.random()-0.5)
-            roll    = (random.random()-0.5)
+        retTargetQs = targetQN.model.predict(state)[0]
+        advance = retTargetQs[0]
+        roll    = retTargetQs[1]
 
         print "advance roll is ",advance,roll
         return advance,roll
@@ -213,9 +204,7 @@ class Module:
 
     def resetWorld(self):
         self.setObject(0,0,"create_2")
-        y = random.random()
-        self.setObject(0.57,(y-0.5)*0.6,"coke0")
-        y = random.random()
+        self.setObject(0.57,0.2,"coke0")
         self.setObject(1.27,0,"beer0")
 
     # main loop
@@ -224,33 +213,29 @@ class Module:
         islearned = False
         mainQN = QNetwork(hidden1_size=HIDDEN_SIZE, learning_rate=LEARNING_RATE)     # main q-network
         targetQN = QNetwork(hidden1_size=HIDDEN_SIZE, learning_rate=LEARNING_RATE)   # target q-network
-        # if you wanna load weights, you 
-        mainQN.model.load_weights('/home/demulab/catkin_ws/src/module/weights/module_weights29.h5')
+        # if you wanna load weights
+        mainQN.model.load_weights('/home/demulab/catkin_ws/src/module/weights/module_weights69.h5')
         memory = Memory(max_size=MEMORY_SIZE)
         actor = Actor()
-        self.resetWorld()
 
         # get first state
         tx,ta,td,gx,ga,gd = self.getObjStates()
         state = np.array([tx,ta,td,gx,ga,gd])
         state = np.reshape(state, [1, 6])
 
-        for episode in range(NUM_EPISODES):
+        for episode in range(1):
             self.is_game_finished = False
             episode_reward = 0
             targetQN.model.set_weights(mainQN.model.get_weights())
-            if episode % 10 == 9:
-                targetQN.model.save_weights('/home/demulab/catkin_ws/src/module/weights/module_weights'+str(episode)+'.h5')
-            self.resetWorld()
-            for t in range(MAX_STEPS + 1):
-                r = rospy.Rate(5)
+            for t in range(20):
+                r = rospy.Rate(3)
                 r.sleep()
                 advance,roll= actor.get_action(state, episode, mainQN)   # select action 
-                self.moveRoomba(advance,roll)
+                self.moveRoomba(advance*0.6,roll)
                 tx,ta,td,gx,ga,gd = self.getObjStates()
                 next_state = np.array([tx,ta,td,gx,ga,gd])
                 next_state = np.reshape(next_state, [1, 6])
-                reward = self.getReward(advance,roll)
+                reward = 1
                 episode_reward += reward
                 memory.add((state, advance, roll, reward, next_state)) # save this experience to memory
                 if (memory.len() > BATCH_SIZE) and not islearned:
@@ -261,9 +246,8 @@ class Module:
 		targetQN.model.set_weights(mainQN.model.get_weights())
 
                 print "is detected and game finished is ",self.target["is_detected"],self.is_game_finished
-                if self.target["is_detected"] == False or self.is_game_finished == True:
-                    break
             print "episode_reward is",episode_reward
+            self.moveRoomba(0,0)
 
 if __name__ == '__main__':
     rospy.init_node('module')

@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<launch>
+  <include file="$(find gazebo_ros)/launch/empty_world.launch"> 
+    <arg name="world_name" value="$(find ca_description)/launch/roomba_dribble.world"/>
+  </include>
+  <param name="robot_description" command="$(find xacro)/xacro.py '$(find ca_description)/urdf/create_2.urdf.xacro'" />
+  
+  <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+	args="-urdf -model create_2 -param robot_description"/>
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" output="screen" />
+</launch>
